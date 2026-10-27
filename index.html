@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>30 天中文重启计划 · Chinese 30-day reboot</title>
+<meta name="description" content="30-day plan to reboot your Chinese, powered by the music of No Party for Cao Dong.">
+<meta name="theme-color" content="#141414">
+<!--
+  ============================================================
+  DEPLOY AS A PWA ON GITHUB PAGES
+  ============================================================
+  Option A — single file (works immediately):
+    1. Push this file as index.html to a repo
+    2. Settings → Pages → deploy from main branch
+    3. Done — it's installable via "Add to Home Screen"
+
+  Option B — full offline PWA (2 tiny extra files):
+    1. Save the manifest block at the bottom of this file
+       as manifest.webmanifest in the same folder
+    2. Save the service worker block as sw.js in the same
+       folder (this page auto-registers it if present)
+    3. Add icons (192x192 + 512x512 png) referenced by
+       the manifest
+  ============================================================
+  v1.1 — Hanyu Pinyin annotations on every task + show/hide
+         toggle. If you use sw.js, bump CACHE to cn30-v2.
+  ============================================================
+-->
+<link rel="manifest" href='data:application/manifest+json,{"name":"30天中文重启计划","short_name":"中文30天","start_url":".","display":"standalone","background_color":"%23141414","theme_color":"%23141414","description":"30-day Chinese reboot plan"}'>
+<style>
+  :root {
+    --bg: #141414; --surface: #1e1e1e; --surface-muted: #262626;
+    --border: #3a3a3a; --text-primary: #f2f2f2; --text-secondary: #c9c9c9;
+    --text-tertiary: #8f8f8f; --pinyin: #7ea8e8; --radius: 10px;
+    --ease: cubic-bezier(.22,.8,.32,1);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #fafafa; --surface: #ffffff; --surface-muted: #f0f0f0;
+      --border: #dddddd; --text-primary: #1a1a1a; --text-secondary: #444444;
+      --text-tertiary: #777777; --pinyin: #2f6fdd;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Hiragino Sans GB",
+                 "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    background: var(--bg); color: var(--text-primary);
+    min-height: 100vh; padding: 24px 16px 64px;
+    line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  header { margin-bottom: 8px; }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: .01em; }
+  .sub { font-size: 13px; color: var(--text-tertiary); margin-top: 4px; }
+  .bar { height: 6px; border-radius: 3px; background: var(--surface-muted);
+         overflow: hidden; margin: 16px 0 4px; }
+  .bar-fill { height: 100%; width: 0%; background: var(--text-primary);
+              border-radius: 3px; transition: width .35s var(--ease); }
+  .count { font-size: 13px; color: var(--text-tertiary);
+           font-variant-numeric: tabular-nums; margin-bottom: 8px; }
+  .phase { font-size: 14px; font-weight: 600; color: var(--text-secondary);
+           margin: 22px 0 10px; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .phase-p { font-size: 11px; font-weight: 400; color: var(--pinyin); }
+  body.no-pinyin .phase-p { display: none; }
+  .day { display: flex; gap: 12px; padding: 12px; border: 1px solid var(--border);
+         border-radius: var(--radius); margin-bottom: 8px; cursor: pointer;
+         align-items: flex-start; background: var(--surface);
+         transition: background .15s var(--ease), transform .1s var(--ease);
+         user-select: none; }
+  .day:active { transform: scale(.99); }
+  .day:hover { background: var(--surface-muted); }
+  .num { min-width: 32px; height: 32px; border-radius: 8px; display: flex;
+         align-items: center; justify-content: center; font-size: 14px;
+         font-weight: 600; border: 1px solid var(--border);
+         color: var(--text-tertiary); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .day.done .num { background: var(--text-primary); color: var(--bg);
+                   border-color: var(--text-primary); }
+  .body { flex: 1; }
+  .t { font-size: 15px; font-weight: 600; }
+  .tp { font-size: 12px; color: var(--pinyin); margin-top: 1px;
+        letter-spacing: .02em; }
+  .day.done .t { color: var(--text-tertiary); text-decoration: line-through; }
+  .d { font-size: 13px; color: var(--text-tertiary); margin-top: 4px; }
+  .dp { font-size: 11px; color: var(--pinyin); opacity: .8; margin-top: 3px;
+        line-height: 1.45; }
+  body.no-pinyin .tp, body.no-pinyin .dp { display: none; }
+  .check { width: 20px; height: 20px; border-radius: 50%;
+           border: 1.5px solid var(--border); flex-shrink: 0; margin-top: 6px;
+           display: flex; align-items: center; justify-content: center; }
+  .day.done .check { background: var(--text-primary);
+                     border-color: var(--text-primary); color: var(--bg); }
+  .check svg { display: none; }
+  .day.done .check svg { display: block; }
+  footer { display: flex; gap: 8px; margin-top: 24px; flex-wrap: wrap; }
+  button { font: inherit; cursor: pointer; }
+  .btn { flex: 1; min-width: 100px; padding: 12px; border-radius: var(--radius);
+         border: 1px solid var(--border); background: transparent;
+         color: var(--text-primary); font-size: 14px; font-weight: 600;
+         transition: background .15s var(--ease); }
+  .btn:hover { background: var(--surface-muted); }
+  .btn.primary { background: var(--text-primary); color: var(--bg);
+                 border-color: var(--text-primary); }
+  .btn.primary:hover { opacity: .88; background: var(--text-primary); }
+  .foot-note { text-align: center; font-size: 12px; color: var(--text-tertiary);
+               margin-top: 24px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>30 天中文重启计划</h1>
+    <div class="sub">从草东没有派对开始，让根重新发芽 · progress saves on this device</div>
+  </header>
+  <div class="bar"><div class="bar-fill" id="fill"></div></div>
+  <div class="count" id="count">0 / 30</div>
+  <div id="list"></div>
+  <footer>
+    <button class="btn primary" id="togglePY">隐藏拼音</button>
+    <button class="btn" id="reset">重置</button>
+    <button class="btn" id="share">分享进度</button>
+  </footer>
+  <div class="foot-note">一格一天 · 慢慢走 · 草东没有派对从来都不是只有站在舞台上的 4 个人</div>
+</div>
+
+<script>
+(function () {
+  var phases = [
+    { name: "第一周 · 拼音与声调 · 把地基打稳",
+      py: "dì yī zhōu · pīnyīn yǔ shēngdiào · bǎ dìjī dǎ wěn",
+      color: "#4f8ef7", days: [
+      ["认识声母韵母", "rènshi shēngmǔ yùnmǔ",
+       "跟读一遍完整拼音表，圈出 5 个最不熟的，写进备忘录",
+       "gēn dú yí biàn wánzhěng pīnyīn biǎo, quān chū wǔ ge zuì bù shú de, xiě jìn bèiwànglù"],
+      ["四声过山车", "sì shēng guòshānchē",
+       "跟读四声练习 10 分钟，重点磨第三声（先降后升）",
+       "gēn dú sìshēng liànxí shí fēnzhōng, zhòngdiǎn mó dì-sān shēng (xiān jiàng hòu shēng)"],
+      ["声调配对游戏", "shēngdiào pèiduì yóuxì",
+       "听写 10 个词：mā má mǎ mà，自己判对错",
+       "tīngxiě shí ge cí: mā má mǎ mà, zìjǐ pàn duìcuò"],
+      ["轻声练习", "qīngshēng liànxí",
+       "读「看着、的、了、吗」各 20 遍，感受轻轻带过",
+       "dú 「kànzhe、de、le、ma」 gè èrshí biàn, gǎnshòu qīngqing dàiguò"],
+      ["绕口令入门", "ràokǒulìng rùmén",
+       "读「四是四，十是十」慢 3 遍 → 快 3 遍",
+       "dú 「sì shì sì, shí shì shí」 màn sān biàn → kuài sān biàn"],
+      ["拼音打字日", "pīnyīn dǎzì rì",
+       "今天打中文只用拼音输入法，打错也别切换",
+       "jīntiān dǎ Zhōngwén zhǐ yòng pīnyīn shūrùfǎ, dǎ cuò yě bié qiēhuàn"],
+      ["第一周复盘", "dì-yī zhōu fùpán",
+       "重测第 2 天的四声，录一段音给自己听",
+       "chóngcè dì-èr tiān de sìshēng, lù yí duàn yīn gěi zìjǐ tīng"]
+    ]},
+    { name: "第二周 · 用草东的歌词当课本",
+      py: "dì èr zhōu · yòng Cǎodōng de gēcí dāng kèběn",
+      color: "#e5534b", days: [
+      ["《山海》第一句", "《Shānhǎi》 dì-yī jù",
+       "wǒ kànzhe tiānzhēn de wǒ zìjǐ — 跟唱 10 遍",
+       "wǒ kànzhe tiānzhēn de wǒ zìjǐ — gēn chàng shí biàn"],
+      ["《山海》副歌", "《Shānhǎi》 fùgē",
+       "他明白 他明白 我给不起 — 感受「给不起」的节奏",
+       "tā míngbai tā míngbai wǒ gěibuqǐ — gǎnshòu 「gěibuqǐ」 de jiézòu"],
+      ["《我们》第一段", "《Wǒmen》 dì-yī duàn",
+       "我们在原野上找一面墙 — 读通顺后试唱",
+       "wǒmen zài yuányě shang zhǎo yí miàn qiáng — dú tōngshùn hòu shì chàng"],
+      ["《烂泥》金句", "《Lànní》 jīnjù",
+       "我想要说的，前人们都说过了 — 写下你自己的版本",
+       "wǒ xiǎng yào shuō de, qiánrénmen dōu shuō guò le — xiě xià nǐ zìjǐ de bǎnběn"],
+      ["《大风吹》", "《Dàfēngchuī》",
+       "那东西我们早就不屑啦 — 练「不屑」这个词",
+       "nà dōngxi wǒmen zǎo jiù bùxiè la — liàn 「bùxiè」 zhège cí"],
+      ["默写挑战", "mòxiě tiǎozhàn",
+       "不看歌词，默写《山海》第一句的拼音",
+       "bù kàn gēcí, mòxiě 《Shānhǎi》 dì-yī jù de pīnyīn"],
+      ["第二周复盘", "dì-èr zhōu fùpán",
+       "完整跟唱《山海》，把最卡壳的一句记下来",
+       "wánzhěng gēn chàng 《Shānhǎi》, bǎ zuì kǎké de yí jù jì xiàlai"]
+    ]},
+    { name: "第三周 · 耳朵打开，让中文流进来",
+      py: "dì sān zhōu · ěrduo dǎkāi, ràng Zhōngwén liú jìnlai",
+      color: "#57ab5a", days: [
+      ["慢速播客", "mànsù bōkè",
+       "听一集 TeaTime Chinese，只要求听懂大意",
+       "tīng yì jí TeaTime Chinese, zhǐ yāoqiú tīng dǒng dàyì"],
+      ["华语歌日", "Huáyǔ gē rì",
+       "随机听 3 首华语歌，记下 3 个新词",
+       "suíjī tīng sān shǒu Huáyǔ gē, jì xià sān ge xīncí"],
+      ["字幕观影", "zìmù guānyǐng",
+       "看一集《俗女养成记》，开中文字幕",
+       "kàn yì jí 《Súnǚ Yǎngchéng Jì》, kāi Zhōngwén zìmù"],
+      ["跟读模仿", "gēndú mófǎng",
+       "挑一句歌词，模仿原唱的语气读 20 遍",
+       "tiāo yí jù gēcí, mófǎng yuánchàng de yǔqì dú èrshí biàn"],
+      ["中文歌单", "Zhōngwén gēdān",
+       "建一个专属歌单，至少 5 首你会跟着哼的",
+       "jiàn yí ge zhuānshǔ gēdān, zhìshǎo wǔ shǒu nǐ huì gēnzhe hēng de"],
+      ["猜歌游戏", "cāi gē yóuxì",
+       "放前奏猜歌名，全中文说出口",
+       "fàng qiánzòu cāi gēmíng, quán Zhōngwén shuō chūkǒu"],
+      ["第三周复盘", "dì-sān zhōu fùpán",
+       "不看字幕跟唱一首歌的副歌部分",
+       "bù kàn zìmù gēn chàng yì shǒu gē de fùgē bùfen"]
+    ]},
+    { name: "第四周 · 开口输出，让根重新发芽",
+      py: "dì sì zhōu · kāikǒu shūchū, ràng gēn chóngxīn fāyá",
+      color: "#b083f0", days: [
+      ["一句话日记", "yí jùhuà rìjì",
+       "用中文写一句今天的感受，存下来",
+       "yòng Zhōngwén xiě yí jù jīntiān de gǎnshòu, cún xiàlai"],
+      ["自我介绍 2.0", "zìwǒ jièshào èr-diǎn-líng",
+       "录一段 30 秒中文自我介绍，听一遍再录一遍",
+       "lù yí duàn sānshí miǎo Zhōngwén zìwǒ jièshào, tīng yí biàn zài lù yí biàn"],
+      ["语言交换", "yǔyán jiāohuàn",
+       "在 HelloTalk 上跟一个母语者聊 10 句",
+       "zài HelloTalk shang gēn yí ge mǔyǔzhě liáo shí jù"],
+      ["歌词翻译回译", "gēcí fānyì huíyì",
+       "把《我们》的英文翻译翻回中文，对照原词",
+       "bǎ 《Wǒmen》 de Yīngwén fānyì fān huí Zhōngwén, duìzhào yuáncí"],
+      ["教别人一句", "jiāo biérén yí jù",
+       "教身边的朋友一句你最爱的歌词",
+       "jiāo shēnbiān de péngyou yí jù nǐ zuì ài de gēcí"],
+      ["自由表达", "zìyóu biǎodá",
+       "用中文写一段关于「以前的自己」的话",
+       "yòng Zhōngwén xiě yí duàn guānyú 「yǐqián de zìjǐ」 de huà"],
+      ["第 30 天 · 全曲验收", "dì sānshí tiān · quánqū yànshōu",
+       "完整唱一遍《山海》，录音存档，30 天后对比",
+       "wánzhěng chàng yí biàn 《Shānhǎi》, lùyīn cúndàng, sānshí tiān hòu duìbǐ"]
+    ]}
+  ];
+
+  var KEY = "cao_dong_30day_v1";
+  var PYKEY = "cao_dong_pinyin_v1";
+  var done = {};
+  try { done = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { done = {}; }
+
+  /* pinyin toggle — default ON, remembered per device */
+  var pyBtn = document.getElementById("togglePY");
+  function applyPY(hidden) {
+    document.body.classList.toggle("no-pinyin", hidden);
+    pyBtn.textContent = hidden ? "显示拼音" : "隐藏拼音";
+  }
+  var pyHidden = false;
+  try { pyHidden = localStorage.getItem(PYKEY) === "1"; } catch (e) {}
+  applyPY(pyHidden);
+  pyBtn.addEventListener("click", function () {
+    pyHidden = !pyHidden;
+    applyPY(pyHidden);
+    try { localStorage.setItem(PYKEY, pyHidden ? "1" : "0"); } catch (e) {}
+  });
+
+  var list = document.getElementById("list");
+  var n = 0;
+  phases.forEach(function (ph) {
+    var h = document.createElement("div");
+    h.className = "phase";
+    h.innerHTML = '<span class="dot" style="background:' + ph.color + '"></span><span>' + ph.name +
+                  '<div class="phase-p">' + ph.py + '</div></span>';
+    list.appendChild(h);
+    ph.days.forEach(function (d) {
+      n++;
+      var id = "d" + n;
+      var row = document.createElement("div");
+      row.className = "day" + (done[id] ? " done" : "");
+      row.dataset.id = id;
+      row.innerHTML =
+        '<div class="num">' + n + '</div>' +
+        '<div class="body">' +
+          '<div class="tp">' + d[1] + '</div>' +
+          '<div class="t">' + d[0] + '</div>' +
+          '<div class="dp">' + d[3] + '</div>' +
+          '<div class="d">' + d[2] + '</div>' +
+        '</div>' +
+        '<div class="check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 7"/></svg></div>';
+      row.addEventListener("click", function () {
+        if (done[id]) delete done[id]; else done[id] = 1;
+        row.classList.toggle("done", !!done[id]);
+        save(); render();
+      });
+      list.appendChild(row);
+    });
+  });
+
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(done)); } catch (e) {} }
+  function render() {
+    var c = Object.keys(done).length;
+    document.getElementById("count").textContent = c + " / 30";
+    document.getElementById("fill").style.width = (c / 30 * 100) + "%";
+  }
+  render();
+
+  document.getElementById("reset").addEventListener("click", function () {
+    if (!confirm("确定要重置 30 天进度吗？")) return;
+    done = {}; save();
+    document.querySelectorAll(".day").forEach(function (r) { r.classList.remove("done"); });
+    render();
+  });
+
+  document.getElementById("share").addEventListener("click", function () {
+    var c = Object.keys(done).length;
+    var text = "我的 30 天中文重启计划进度：" + c + "/30 天完成 🖤 从草东没有派对开始，让根重新发芽。";
+    if (navigator.share) {
+      navigator.share({ title: document.title, text: text, url: location.href }).catch(function () {});
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(text + " " + location.href).then(function () {
+        alert("已复制到剪贴板！");
+      });
+    }
+  });
+
+  /* ---- Optional offline PWA: register sw.js if you add one ---- */
+  if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
+    navigator.serviceWorker.register("sw.js").catch(function () { /* optional file not present */ });
+  }
+})();
+</script>
+</body>
+</html>
+
+<!-- ==========================================================
+OPTIONAL FILE 1 — save as manifest.webmanifest (same folder)
+==========================================================
+{
+  "name": "30天中文重启计划",
+  "short_name": "中文30天",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#141414",
+  "theme_color": "#141414",
+  "description": "30-day Chinese reboot plan",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
+
+OPTIONAL FILE 2 — save as sw.js (same folder)  ← bump CACHE to v2!
+==========================================================
+const CACHE = "cn30-v2";
+self.addEventListener("install", e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(["./"])));
+  self.skipWaiting();
+});
+self.addEventListener("activate", e => e.waitUntil(clients.claim()));
+self.addEventListener("fetch", e => {
+  e.respondWith(
+    caches.match(e.request).then(r => r || fetch(e.request).then(res => {
+      const copy = res.clone();
+      caches.open(CACHE).then(c => c.put(e.request, copy));
+      return res;
+    }).catch(() => caches.match("./")))
+  );
+});
+========================================================== -->
